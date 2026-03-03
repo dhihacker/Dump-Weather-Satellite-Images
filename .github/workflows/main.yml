@@ -2,8 +2,8 @@ name: Download Weather Satellite Images
 
 on:
   schedule:
-    # Run every hour (you can change to */30 for every 30 minutes)
-    - cron: '0 * * * *'
+    # Run every 2 hours
+    - cron: '0 */2 * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
@@ -20,11 +20,18 @@ jobs:
         python-version: '3.10'
         
     - name: Create images directory
-      run: mkdir -p images/2026
+      run: |
+        mkdir -p images/2026/03
+        mkdir -p images/2026/02
         
     - name: Download satellite images
       run: |
-        python scripts/download_images.py --days 2
+        python scripts/download_images.py --days 3
+        
+    - name: List downloaded files
+      run: |
+        echo "📁 Downloaded files:"
+        find images -type f -name "*.jpg" | sort || true
         
     - name: Configure Git
       run: |
