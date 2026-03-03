@@ -1,9 +1,7 @@
 import os
 import ftplib
 from datetime import datetime
-from pathlib import Path
 
-# FTP server details
 FTP_HOST = "ntsomz.gptl.ru"
 FTP_PORT = 2121
 FTP_USER = "electro"
@@ -21,7 +19,7 @@ def connect_ftp():
 
 def get_latest_month_day(ftp):
     ftp.cwd(IMAGE_ROOT_PATH)
-    months = sorted(ftp.nlst())
+    months = sorted(ftp.nlst())  # Expecting months as '01', '02', ..., not names
     if not months:
         return None, None
     latest_month = months[-1]
@@ -30,7 +28,7 @@ def get_latest_month_day(ftp):
     if not days:
         return latest_month, None
     latest_day = days[-1]
-    ftp.cwd("..")  # Go back to month
+    ftp.cwd("..")
     return latest_month, latest_day
 
 def list_new_images(ftp, year, month, day):
@@ -51,6 +49,7 @@ def already_downloaded(local_path):
     return os.path.exists(local_path)
 
 def main():
+    os.makedirs(LOCAL_SAVE_ROOT, exist_ok=True)
     ftp = connect_ftp()
     year = "2026"
     latest_month, latest_day = get_latest_month_day(ftp)
