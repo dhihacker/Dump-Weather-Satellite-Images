@@ -5,7 +5,6 @@ Downloads images from FTP server and organizes them by date
 """
 
 import os
-import sys
 from ftplib import FTP, error_perm
 import logging
 from datetime import datetime, timedelta
@@ -18,7 +17,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
@@ -34,113 +33,64 @@ class SatelliteImageDownloader:
         self.local_base = Path('images')
         self.local_base.mkdir(exist_ok=True)
         
-        # Month mappings (name -> number)
+        # Month mappings
         self.months = {
             'January': '01', 'February': '02', 'March': '03',
             'April': '04', 'May': '05', 'June': '06',
             'July': '07', 'August': '08', 'September': '09',
             'October': '10', 'November': '11', 'December': '12'
         }
-        
-        # Time slots to check (24-hour format)
-        self.time_slots = [f"{h:02d}{m:02d}" for h in range(24) for m in (0, 30)]
 
     def connect_ftp(self):
-        """Establish FTP connection with retry logic"""
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                ftp = FTP()
-                ftp.connect(self.host, self.port, timeout=30)
-                ftp.login(self.username, self.password)
-                ftp.set_pasv(True)  # Use passive mode
-                logger.info(f"Connected to {self.host}:{self.port}")
-                return ftp
-            except Exception as e:
-                logger.error(f"FTP connection failed (attempt {attempt+1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(5)
-        return None
-
-    def get_remote_files(self, ftp, path):
-        """Get list of files in remote directory"""
+        """Establish FTP connection"""
         try:
-            files = []
-            ftp.retrlines(f'LIST {path}', files.append)
-            return files
-        except error_perm as e:
-            logger.debug(f"Directory {path} not accessible: {e}")
-            return []
+            ftp = FTP()
+            ftp.connect(self.host, self.port, timeout=30)
+            ftp.login(self.username, self.password)
+            ftp.set_pasv(True)
+            logger.info(f"Connected to {self.host}:{self.port}")
+            return ftp
         except Exception as e:
-            logger.error(f"Error listing directory {path}: {e}")
-            return []
+            logger.error(f"FTP connection failed: {e}")
+            return None
 
-    def parse_file_info(self, file_line):
-        """Parse FTP LIST output to get filename"""
-        parts = file_line.split()
-        if len(parts) > 8:
-            # Handle different LIST formats
-            # Common format: -rw-r--r-- 1 user group size month day time filename
-            filename = ' '.join(parts[8:])
-            return filename.strip()
-        return None
-
-    def is_target_image(self, filename):
-        """Check if filename matches our target pattern"""
-        if not filename or not filename.endswith('.jpg'):
-            return False
-        
-        # Check for RGB VIS IR pattern
-        if '_original_RGB_VIS_IR.jpg' not in filename:
-            return False
-        
-        # Check if filename contains any time slot
-        # Example: 260303_0115_original_RGB_VIS_IR.jpg
-        # The time part is after the date: YYMMDD_HHMM
+    def get_time_folders(self, ftp, base_dir):
+        """Get all time folders (like 0115, 0145, etc.) in a directory"""
         try:
-            # Extract the time part (HHMM) from filename
-            parts = filename.split('_')
-            if len(parts) >= 2:
-                time_part = parts[1]  # Should be like "0115"
-                if len(time_part) == 4 and time_part.isdigit():
-                    return True
-        except:
-            pass
-            
-        return False
+            ftp.cwd(base_dir)
+            items = ftp.nlst()
+            # Filter for time folders (4 digits)
+            time_folders = [item for item in items if len(item) == 4 and item.isdigit()]
+            return time_folders
+        except Exception as e:
+            logger.debug(f"Could not list time folders in {base_dir}: {e}")
+            return []
 
     def download_file(self, ftp, remote_path, local_path):
-        """Download a single file with retry logic"""
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                # Create local directory if it doesn't exist
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                # Check if file already exists
-                if local_path.exists():
-                    logger.debug(f"File already exists: {local_path}")
-                    return False
-                
-                # Download file
-                with open(local_path, 'wb') as f:
-                    ftp.retrbinary(f'RETR {remote_path}', f.write)
-                
-                logger.info(f"✅ Downloaded: {remote_path}")
-                return True
-                
-            except Exception as e:
-                logger.error(f"Error downloading {remote_path} (attempt {attempt+1}): {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(3)
-        
-        return False
+        """Download a single file"""
+        try:
+            # Create local directory if it doesn't exist
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Check if file already exists
+            if local_path.exists():
+                logger.debug(f"File already exists: {local_path}")
+                return False
+            
+            # Download file
+            with open(local_path, 'wb') as f:
+                ftp.retrbinary(f'RETR {remote_path}', f.write)
+            
+            logger.info(f"✅ Downloaded: {remote_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error downloading {remote_path}: {e}")
+            return False
 
     def scan_and_download(self, days_back=2):
         """Scan FTP server and download new images"""
         ftp = self.connect_ftp()
         if not ftp:
-            logger.error("Failed to connect to FTP server")
             return 0
         
         downloaded_count = 0
@@ -156,7 +106,7 @@ class SatelliteImageDownloader:
                 month_num = current_date.strftime('%m')
                 day = current_date.strftime('%d')
                 
-                # Get month name from number
+                # Get month name
                 month_name = None
                 for name, num in self.months.items():
                     if num == month_num:
@@ -164,45 +114,52 @@ class SatelliteImageDownloader:
                         break
                 
                 if not month_name:
-                    logger.warning(f"Could not find month name for {month_num}")
                     current_date += timedelta(days=1)
                     continue
                 
                 logger.info(f"Checking: 2026/{month_name}/{day}")
                 
-                # Construct remote path
-                remote_dir = f"{self.base_path}{month_name}/{day}/"
+                # Construct day directory path
+                day_dir = f"{self.base_path}{month_name}/{day}/"
                 
-                # Change to remote directory
                 try:
-                    ftp.cwd(remote_dir)
-                except:
-                    logger.debug(f"Directory not found: {remote_dir}")
-                    current_date += timedelta(days=1)
-                    continue
-                
-                # Get files in directory
-                try:
-                    files = ftp.nlst()
-                except:
-                    files = self.get_remote_files(ftp, remote_dir)
-                
-                if not files:
-                    logger.debug(f"No files in {remote_dir}")
-                    current_date += timedelta(days=1)
-                    continue
-                
-                # Process each file
-                for filename in files:
-                    if not self.is_target_image(filename):
+                    # Change to day directory
+                    ftp.cwd(day_dir)
+                    
+                    # Get all time folders (0115, 0145, etc.)
+                    time_folders = self.get_time_folders(ftp, day_dir)
+                    
+                    if not time_folders:
+                        logger.debug(f"No time folders found in {day_dir}")
+                        current_date += timedelta(days=1)
                         continue
                     
-                    scanned_count += 1
-                    remote_path = f"{remote_dir}{filename}"
-                    local_path = self.local_base / '2026' / month_num / day / filename
-                    
-                    if self.download_file(ftp, remote_path, local_path):
-                        downloaded_count += 1
+                    # Check each time folder for images
+                    for time_folder in time_folders:
+                        time_dir = f"{day_dir}{time_folder}/"
+                        
+                        try:
+                            ftp.cwd(time_dir)
+                            files = ftp.nlst()
+                            
+                            # Look for RGB VIS IR images
+                            for filename in files:
+                                if filename.endswith('.jpg') and 'original_RGB_VIS_IR' in filename:
+                                    scanned_count += 1
+                                    remote_path = f"{time_dir}{filename}"
+                                    
+                                    # Create local path: images/2026/MM/DD/filename
+                                    local_path = self.local_base / '2026' / month_num / day / filename
+                                    
+                                    if self.download_file(ftp, remote_path, local_path):
+                                        downloaded_count += 1
+                                        
+                        except Exception as e:
+                            logger.debug(f"Could not access {time_dir}: {e}")
+                            continue
+                            
+                except Exception as e:
+                    logger.debug(f"Could not access {day_dir}: {e}")
                 
                 current_date += timedelta(days=1)
             
@@ -219,15 +176,10 @@ class SatelliteImageDownloader:
                 pass
 
 def main():
-    """Main function"""
     parser = argparse.ArgumentParser(description='Download weather satellite images')
-    parser.add_argument('--days', type=int, default=2,
-                       help='Number of days back to scan (default: 2)')
-    parser.add_argument('--continuous', action='store_true',
-                       help='Run in continuous monitoring mode')
-    parser.add_argument('--interval', type=int, default=30,
-                       help='Minutes between scans in continuous mode (default: 30)')
-    
+    parser.add_argument('--days', type=int, default=2, help='Days back to scan')
+    parser.add_argument('--continuous', action='store_true', help='Run continuously')
+    parser.add_argument('--interval', type=int, default=30, help='Minutes between scans')
     args = parser.parse_args()
     
     downloader = SatelliteImageDownloader()
@@ -248,7 +200,7 @@ def main():
                 break
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}")
-                time.sleep(300)  # Wait 5 minutes on error
+                time.sleep(300)
     else:
         downloader.scan_and_download(days_back=args.days)
 
