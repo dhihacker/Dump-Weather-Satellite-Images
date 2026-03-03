@@ -1,33 +1,49 @@
-name: Dump Weather Satellite Images
+name: Download Weather Satellite Images
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
-  workflow_dispatch:
+    # Run every hour at minute 15
+    - cron: '15 * * * *'
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  dump:
+  download-images:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-
-      - name: Run satellite image dumper
-        run: |
-          python sat_image_dumper.py
-
-      - name: Commit and push new images
-        run: |
-          git config --global user.name "gh-actions-bot"
-          git config --global user.email "gh-actions-bot@example.com"
-          git add . -- '*.jpg' || true
-          git diff --cached --quiet || (git commit -m "Add new satellite images [bot]" && git push)
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Download satellite images
+      run: |
+        python scripts/download_images.py --days 2
+        
+    - name: Check for changes
+      id: git-check
+      run: |
+        git add images/
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+          echo "changed=false" >> $GITHUB_OUTPUT
+        else
+          echo "Changes detected"
+          echo "changed=true" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Commit and push if changed
+      if: steps.git-check.outputs.changed == 'true'
+      run: |
+        git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        git commit -m "Update satellite images - $(date +'%Y-%m-%d %H:%M:%S')"
+        git push
