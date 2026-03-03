@@ -29,5 +29,5 @@ jobs:
         run: |
           git config --global user.name "gh-actions-bot"
           git config --global user.email "gh-actions-bot@example.com"
-          git add '*.jpg'
+          git add . -- '*.jpg' || true
           git diff --cached --quiet || (git commit -m "Add new satellite images [bot]" && git push)
