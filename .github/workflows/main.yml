@@ -39,7 +39,7 @@ jobs:
         
     - name: Download satellite images
       run: |
-        python scripts/download_images.py --days 2
+        python sat_image_dumper.py --days 2
         
     - name: Configure Git
       run: |
