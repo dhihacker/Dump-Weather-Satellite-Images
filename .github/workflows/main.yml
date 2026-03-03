@@ -25,12 +25,12 @@ jobs:
         run: |
           python sat_image_dumper.py
 
-      - name: Ensure images folder exists
-        run: mkdir -p images
+      - name: Ensure output folders exist
+        run: mkdir -p ELECTRO_L_3/2026
 
-      - name: Commit and push images
+      - name: Commit and push new images
         run: |
           git config --global user.name "gh-actions-bot"
           git config --global user.email "gh-actions-bot@example.com"
-          git add images/
+          git add ELECTRO_L_3/
           git diff --cached --quiet || (git commit -m "Add new satellite images [bot]" && git push)
