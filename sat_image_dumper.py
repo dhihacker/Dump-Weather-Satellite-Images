@@ -8,8 +8,6 @@ FTP_PASS = "electro"
 
 IMAGE_ROOT_PATH = "/ELECTRO_L_3/2026/"
 
-LOCAL_SAVE_ROOT = "ELECTRO_L_3/2026"
-
 def connect_ftp():
     ftp = ftplib.FTP()
     ftp.connect(FTP_HOST, FTP_PORT)
@@ -18,16 +16,12 @@ def connect_ftp():
 
 def get_latest_month_day(ftp):
     ftp.cwd(IMAGE_ROOT_PATH)
-    months = sorted(
-        [m for m in ftp.nlst() if m.isdigit() and len(m) == 2]
-    )
+    months = sorted([m for m in ftp.nlst() if m.isdigit() and len(m) == 2])
     if not months:
         return None, None
     latest_month = months[-1]
     ftp.cwd(latest_month)
-    days = sorted(
-        [d for d in ftp.nlst() if d.isdigit() and len(d) == 2]
-    )
+    days = sorted([d for d in ftp.nlst() if d.isdigit() and len(d) == 2])
     if not days:
         return latest_month, None
     latest_day = days[-1]
@@ -44,15 +38,13 @@ def list_new_images(ftp, month, day):
         return []
 
 def download_image(ftp, remote_path, local_path):
-    os.makedirs(os.path.dirname(local_path), exist_ok=True)
     with open(local_path, "wb") as f:
-        ftp.retrbinary(f"RETR " + remote_path, f.write)
+        ftp.retrbinary(f"RETR {remote_path}", f.write)
 
 def already_downloaded(local_path):
     return os.path.exists(local_path)
 
 def main():
-    os.makedirs(LOCAL_SAVE_ROOT, exist_ok=True)
     ftp = connect_ftp()
     latest_month, latest_day = get_latest_month_day(ftp)
     if not latest_month or not latest_day:
@@ -62,10 +54,12 @@ def main():
     images = list_new_images(ftp, latest_month, latest_day)
     print(f"Found {len(images)} image(s) in {latest_month}/{latest_day}.")
     for img in images:
+        # Prefix filename with month and day to ensure uniqueness
+        local_img_name = f"{latest_month}_{latest_day}_{img}"
         remote_img_path = f"{IMAGE_ROOT_PATH}{latest_month}/{latest_day}/{img}"
-        local_img_path = os.path.join(LOCAL_SAVE_ROOT, latest_month, latest_day, img)
+        local_img_path = os.path.join(".", local_img_name)
         if already_downloaded(local_img_path):
-            print(f"Already downloaded: {img}")
+            print(f"Already downloaded: {local_img_name}")
             continue
         try:
             print(f"Downloading {img} ...")
