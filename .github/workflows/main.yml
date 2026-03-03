@@ -2,18 +2,21 @@ name: Download Weather Satellite Images
 
 on:
   schedule:
-    # Run every 2 hours
     - cron: '0 */2 * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
   download-images:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Important: Give write permission
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+      with:
+        fetch-depth: 0
+        
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -23,29 +26,78 @@ jobs:
       run: |
         mkdir -p images/2026/03
         mkdir -p images/2026/02
+        echo "📁 Images directory created"
         
     - name: Download satellite images
       run: |
         python scripts/download_images.py --days 3
+      continue-on-error: true  # Don't stop if download fails
         
-    - name: List downloaded files
+    - name: Debug - List all files after download
       run: |
-        echo "📁 Downloaded files:"
-        find images -type f -name "*.jpg" | sort || true
+        echo "📁 Current directory structure:"
+        ls -la
+        echo ""
+        echo "📁 Images directory contents:"
+        ls -la images/ || echo "Images directory empty"
+        echo ""
+        echo "📁 Recursive listing of images:"
+        find images -type f -name "*.jpg" -o -name "*.png" | head -20 || echo "No image files found"
+        echo ""
+        echo "📁 Count of image files:"
+        find images -type f -name "*.jpg" | wc -l
         
     - name: Configure Git
       run: |
         git config --global user.name 'GitHub Action'
         git config --global user.email 'action@github.com'
         
-    - name: Commit and push if changed
+    - name: Check git status
+      run: |
+        echo "📊 Git status before add:"
+        git status
+        
+    - name: Add images to git
       run: |
         git add images/
-        if ! git diff --staged --quiet; then
-          TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S UTC')
-          git commit -m "Update satellite images - $TIMESTAMP"
-          git push
-          echo "✅ New images committed and pushed"
+        echo "✅ Added images to git"
+        
+    - name: Check git status after add
+      run: |
+        echo "📊 Git status after add:"
+        git status
+        
+    - name: Check if there are changes to commit
+      id: git-check
+      run: |
+        if git diff --staged --quiet; then
+          echo "📝 No changes to commit"
+          echo "changed=false" >> $GITHUB_OUTPUT
         else
-          echo "ℹ️ No new images to commit"
+          echo "📝 Changes detected - ready to commit"
+          echo "changed=true" >> $GITHUB_OUTPUT
+          # Show what will be committed
+          git diff --staged --name-only
+        fi
+        
+    - name: Commit images
+      if: steps.git-check.outputs.changed == 'true'
+      run: |
+        TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S UTC')
+        git commit -m "Update satellite images - $TIMESTAMP"
+        echo "✅ Committed changes"
+        
+    - name: Push changes
+      if: steps.git-check.outputs.changed == 'true'
+      run: |
+        git push origin main
+        echo "✅ Pushed to GitHub"
+        
+    - name: Final status
+      run: |
+        echo "🎉 Workflow completed"
+        if [[ "${{ steps.git-check.outputs.changed }}" == "true" ]]; then
+          echo "✅ Images were downloaded and pushed to the repository"
+        else
+          echo "⚠️ No new images were downloaded or added to the repository"
         fi
