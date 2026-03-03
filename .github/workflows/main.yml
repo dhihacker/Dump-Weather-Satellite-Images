@@ -2,8 +2,8 @@ name: Download Weather Satellite Images
 
 on:
   schedule:
-    # Run every hour at minute 15
-    - cron: '15 * * * *'
+    # Run every 30 minutes
+    - cron: '*/30 * * * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
@@ -12,38 +12,58 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for proper commits
       
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
+        
+    - name: Create requirements.txt if not exists
+      run: |
+        if [ ! -f requirements.txt ]; then
+          echo "# Standard library only" > requirements.txt
+        fi
         
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        # Install from requirements.txt (will be empty/fast)
         pip install -r requirements.txt
+        
+    - name: Create images directory
+      run: |
+        mkdir -p images/2026
         
     - name: Download satellite images
       run: |
         python scripts/download_images.py --days 2
         
+    - name: Configure Git
+      run: |
+        git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        
     - name: Check for changes
       id: git-check
       run: |
         git add images/
-        if git diff --staged --quiet; then
+        # Check if there are changes to commit
+        if git diff --staged --quiet && git diff --quiet; then
           echo "No changes to commit"
           echo "changed=false" >> $GITHUB_OUTPUT
         else
           echo "Changes detected"
           echo "changed=true" >> $GITHUB_OUTPUT
+          # Show what's being committed
+          git status --short
         fi
         
     - name: Commit and push if changed
       if: steps.git-check.outputs.changed == 'true'
       run: |
-        git config --global user.name 'GitHub Action'
-        git config --global user.email 'action@github.com'
-        git commit -m "Update satellite images - $(date +'%Y-%m-%d %H:%M:%S')"
+        TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S UTC')
+        git commit -m "Update satellite images - $TIMESTAMP"
         git push
