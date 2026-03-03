@@ -25,6 +25,9 @@ jobs:
         run: |
           python sat_image_dumper.py
 
+      - name: Ensure images folder exists
+        run: mkdir -p images
+
       - name: Commit and push images
         run: |
           git config --global user.name "gh-actions-bot"
